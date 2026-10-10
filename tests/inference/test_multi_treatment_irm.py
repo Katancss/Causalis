@@ -118,7 +118,8 @@ def test_multi_treatment_irm_returns_multicausal_estimate():
     assert result.diagnostic_data.m_hat_raw.shape == result.diagnostic_data.m_hat.shape
 
 
-def test_multi_treatment_irm_summary_uses_causalestimate_style_with_one_column_per_contrast():
+@pytest.mark.parametrize("score", ["ATE", "ATTE"])
+def test_multi_treatment_irm_summary_uses_causalestimate_style_with_one_column_per_contrast(score):
     data = _make_multi_causal_data()
     model = MultiTreatmentIRM(
         data=data,
@@ -127,7 +128,7 @@ def test_multi_treatment_irm_summary_uses_causalestimate_style_with_one_column_p
         n_folds=3,
         random_state=1,
     )
-    result = model.fit().estimate(alpha=0.05)
+    result = model.fit().estimate(score=score, alpha=0.05)
     summary = result.summary()
 
     assert summary.index.name == "field"
@@ -154,6 +155,13 @@ def test_multi_treatment_irm_summary_uses_causalestimate_style_with_one_column_p
     assert summary.loc["n_treated", "d2 vs d0"] == int(np.sum(data.get_df()["d2"].to_numpy() == 1))
     assert summary.loc["n_control", "d1 vs d0"] == int(np.sum(data.get_df()["d0"].to_numpy() == 1))
     assert summary.loc["n_control", "d2 vs d0"] == int(np.sum(data.get_df()["d0"].to_numpy() == 1))
+    df = data.get_df()
+    raw_control_mean = df.loc[df["d0"] == 1, "y"].mean()
+    for arm, contrast in zip(["d1", "d2"], result.contrast_labels):
+        raw_treatment_mean = df.loc[df[arm] == 1, "y"].mean()
+        assert summary.loc["treatment_mean", contrast] == f"{raw_treatment_mean:.4f}"
+        assert summary.loc["control_mean", contrast] == f"{raw_control_mean:.4f}"
+    pd.testing.assert_frame_equal(model.summary_, summary)
 
 
 def test_multi_treatment_irm_fit_requires_multicausaldata():
@@ -411,8 +419,11 @@ def test_multi_treatment_irm_atte_relative_outputs_use_per_arm_control_mean():
     )
 
     summary = result.summary()
-    for idx, contrast in enumerate(result.contrast_labels):
-        assert summary.loc["control_mean", contrast] == f"{result.control_mean_by_arm[idx]:.4f}"
+    df = data.get_df()
+    raw_control_mean = df.loc[df["d0"] == 1, "y"].mean()
+    assert not np.allclose(result.control_mean_by_arm, raw_control_mean)
+    for contrast in result.contrast_labels:
+        assert summary.loc["control_mean", contrast] == f"{raw_control_mean:.4f}"
 
 
 def test_multi_treatment_irm_atte_runs_on_small_synthetic_data():

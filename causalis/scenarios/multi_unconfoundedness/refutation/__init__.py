@@ -10,6 +10,7 @@ __all__ = [
     "overlap",
     "score",
     "unconfoundedness",
+    "love_plot",
     "plot_m_overlap",
     "overlap_plot",
     "plot_residual_diagnostics",

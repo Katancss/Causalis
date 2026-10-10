@@ -1,3 +1,4 @@
+from .love_plot import love_plot
 from .unconfoundedness_validation import (
     validate_unconfoundedness_balance,
     run_unconfoundedness_diagnostics,
@@ -10,6 +11,7 @@ from .sensitivity import (
 )
 
 __all__ = [
+    "love_plot",
     "validate_unconfoundedness_balance",
     "run_unconfoundedness_diagnostics",
     "sensitivity_analysis",

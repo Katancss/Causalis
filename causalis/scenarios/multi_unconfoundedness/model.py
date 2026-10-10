@@ -19,6 +19,7 @@ except ImportError:
 
 from causalis.data_contracts.multicausaldata import MultiCausalData
 from causalis.data_contracts.multicausal_estimate import MultiCausalEstimate
+from causalis.data_contracts.multi_gate_estimate import MultiGateEstimate
 from causalis.data_contracts.causal_diagnostic_data import MultiUnconfoundednessDiagnosticData
 from causalis.scenarios.multi_unconfoundedness._utils import (
     _is_binary,
@@ -461,6 +462,13 @@ class MultiTreatmentIRM(BaseEstimator):
         self._fit_sample_fingerprint_ = self._compute_sample_fingerprint(X=X, y=y, d=d)
         self._y = np.asarray(y, dtype=float).copy()
         self._d = np.asarray(d, dtype=int).copy()
+        self._fit_user_id_name_ = self.data.user_id
+        self._fit_row_index_ = self.data.df.index.copy()
+        self._fit_index_ = (
+            pd.Index(self.data.df[self.data.user_id].copy(), name=self.data.user_id)
+            if self.data.user_id else None
+        )
+        self._fit_treatment_names_ = tuple(self.data.treatments.columns)
         if self.store_diagnostics:
             self._X = np.asarray(X, dtype=float).copy()
         else:
@@ -700,8 +708,8 @@ class MultiTreatmentIRM(BaseEstimator):
         if not (0.0 < float(alpha) < 1.0):
             raise ValueError("alpha must be in (0, 1).")
         score_u = str(score).upper()
-        if score_u not in {"ATE", "ATTE"}:
-            raise RuntimeError("Only ATE and ATTE are supported")
+        if score_u not in {"ATE", "ATTE", "GATE", "GATET"}:
+            raise RuntimeError("Only ATE, ATTE, GATE and GATET are supported")
         return score_u
 
     def _compute_score_terms(
@@ -910,12 +918,15 @@ class MultiTreatmentIRM(BaseEstimator):
         score: str = "ATE",
         alpha: float = 0.05,
         diagnostic_data: bool = True,
-    ) -> MultiCausalEstimate:
+        *,
+        groups: Optional[pd.DataFrame | pd.Series | np.ndarray] = None,
+        cov_type: str = "HC3",
+    ) -> MultiCausalEstimate | MultiGateEstimate:
         """Estimate pairwise baseline contrasts for each active treatment arm.
 
         Parameters
         ----------
-        score : {"ATE", "ATTE"}, default "ATE"
+        score : {"ATE", "ATTE", "GATE", "GATET"}, default "ATE"
             Target estimand. ``"ATE"`` estimates pairwise average treatment effects
             for each active arm versus baseline arm 0. ``"ATTE"`` estimates the
             corresponding pairwise average treatment effect on the treated for each
@@ -925,16 +936,36 @@ class MultiTreatmentIRM(BaseEstimator):
             Two-sided significance level used for Wald confidence intervals.
         diagnostic_data : bool, default True
             Whether to attach the fitted diagnostic payload to the returned estimate.
+        groups : pandas Series, DataFrame or numpy array, optional
+            Required for GATE/GATET: a pre-treatment partition based on the
+            adjustment covariates. Indexed labels are aligned to fit-time user
+            IDs; row-indexed labels require an unchanged row-to-ID mapping.
+            One-dimensional arrays follow the original fit-time row order.
+            MultiCausalData.user_id must be configured before fitting.
+        cov_type : {"HC0", "HC1", "HC2", "HC3"}, default "HC3"
+            Subgroup covariance correction, ignored for ATE/ATTE. GATE averages
+            over all subgroup members; GATET targets recipients of each arm.
+            Subgroup estimation uses canonical, unnormalized scores and leaves
+            cached global estimates unchanged. Inference is pointwise.
 
         Returns
         -------
-        MultiCausalEstimate
-            Result container holding one effect estimate per active arm versus
-            the baseline arm, together with confidence intervals, p-values,
-            relative effects, and optionally diagnostic payloads.
+        MultiCausalEstimate or MultiGateEstimate
+            ATE/ATTE returns one effect per active arm, including relative
+            effects. GATE/GATET returns group-by-arm absolute effects and joint
+            covariance; ``for_treatment(name)`` extracts a ``GateEstimate`` for
+            existing subgroup contrasts and plotting. Both include pointwise
+            confidence intervals, p-values and optional diagnostic payloads.
         """
         check_is_fitted(self, attributes=["g_hat_", "m_hat_"])
         score_u = self._validate_estimate_request(score=score, alpha=alpha)
+        if score_u in {"GATE", "GATET"}:
+            from causalis.scenarios.multi_unconfoundedness.gate import _estimate_multi_gate
+
+            return _estimate_multi_gate(
+                self, score=score_u, groups=groups, alpha=alpha,
+                cov_type=cov_type, diagnostic_data=diagnostic_data,
+            )
         self.score = score_u
         normalize_ipw_effective = self._use_normalized_ipw(score=score_u)
         self.normalize_ipw_effective_ = normalize_ipw_effective
@@ -1045,6 +1076,34 @@ class MultiTreatmentIRM(BaseEstimator):
         self.confint_ = np.array([ci_low, ci_high])
         self.summary_ = results.summary()
         return results
+
+    def gate(
+        self,
+        groups: pd.DataFrame | pd.Series | np.ndarray,
+        alpha: float = 0.05,
+        cov_type: str = "HC3",
+        *,
+        diagnostic_data: bool = True,
+    ) -> MultiGateEstimate:
+        """Estimate subgroup ATEs for each active arm versus baseline; see ``estimate``."""
+        return self.estimate(
+            score="GATE", groups=groups, alpha=alpha,
+            cov_type=cov_type, diagnostic_data=diagnostic_data,
+        )
+
+    def gatet(
+        self,
+        groups: pd.DataFrame | pd.Series | np.ndarray,
+        alpha: float = 0.05,
+        cov_type: str = "HC3",
+        *,
+        diagnostic_data: bool = True,
+    ) -> MultiGateEstimate:
+        """Estimate subgroup effects among recipients of each active arm versus baseline."""
+        return self.estimate(
+            score="GATET", groups=groups, alpha=alpha,
+            cov_type=cov_type, diagnostic_data=diagnostic_data,
+        )
 
     @property
     def diagnostics_(self) -> Dict[str, Any]:

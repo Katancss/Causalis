@@ -23,10 +23,6 @@ orphan: true
   - ```{autodoc2-docstring} causalis._version.__all__
     :summary:
     ```
-* - {py:obj}`TYPE_CHECKING <causalis._version.TYPE_CHECKING>`
-  - ```{autodoc2-docstring} causalis._version.TYPE_CHECKING
-    :summary:
-    ```
 * - {py:obj}`version <causalis._version.version>`
   - ```{autodoc2-docstring} causalis._version.version
     :summary:
@@ -65,16 +61,6 @@ orphan: true
 
 ````
 
-````{py:data} TYPE_CHECKING
-:canonical: causalis._version.TYPE_CHECKING
-:value: >
-   False
-
-```{autodoc2-docstring} causalis._version.TYPE_CHECKING
-```
-
-````
-
 ````{py:data} version
 :canonical: causalis._version.version
 :type: str
@@ -99,7 +85,7 @@ orphan: true
 
 ````{py:data} __version_tuple__
 :canonical: causalis._version.__version_tuple__
-:type: causalis._version.VERSION_TUPLE
+:type: tuple[int | str, ...]
 :value: >
    None
 
@@ -110,7 +96,7 @@ orphan: true
 
 ````{py:data} version_tuple
 :canonical: causalis._version.version_tuple
-:type: causalis._version.VERSION_TUPLE
+:type: tuple[int | str, ...]
 :value: >
    None
 
@@ -121,7 +107,7 @@ orphan: true
 
 ````{py:data} commit_id
 :canonical: causalis._version.commit_id
-:type: causalis._version.COMMIT_ID
+:type: str | None
 :value: >
    None
 
@@ -132,7 +118,7 @@ orphan: true
 
 ````{py:data} __commit_id__
 :canonical: causalis._version.__commit_id__
-:type: causalis._version.COMMIT_ID
+:type: str | None
 :value: >
    None
 

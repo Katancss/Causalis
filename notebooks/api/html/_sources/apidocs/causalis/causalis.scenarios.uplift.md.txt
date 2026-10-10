@@ -13,6 +13,7 @@
 :titlesonly:
 :maxdepth: 1
 
+causalis.scenarios.uplift.policy
 causalis.scenarios.uplift.model
 ```
 
@@ -35,7 +36,7 @@ causalis.scenarios.uplift.model
 ````{py:data} __all__
 :canonical: causalis.scenarios.uplift.__all__
 :value: >
-   ['predict_cate']
+   ['predict_cate', 'UpliftPolicyTree', 'UpliftPolicyEvaluation']
 
 ```{autodoc2-docstring} causalis.scenarios.uplift.__all__
 ```

@@ -24,6 +24,7 @@ causalis.scenarios.multi_unconfoundedness.refutation
 
 causalis.scenarios.multi_unconfoundedness.dgp
 causalis.scenarios.multi_unconfoundedness.model
+causalis.scenarios.multi_unconfoundedness.gate
 ```
 
 ## Package Contents

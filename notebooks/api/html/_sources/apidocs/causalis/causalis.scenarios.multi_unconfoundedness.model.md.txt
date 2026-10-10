@@ -45,10 +45,26 @@ Bases: {py:obj}`sklearn.base.BaseEstimator`
 
 ````
 
-````{py:method} estimate(score: str = 'ATE', alpha: float = 0.05, diagnostic_data: bool = True) -> causalis.data_contracts.multicausal_estimate.MultiCausalEstimate
+````{py:method} estimate(score: str = 'ATE', alpha: float = 0.05, diagnostic_data: bool = True, *, groups: typing.Optional[pandas.DataFrame | pandas.Series | numpy.ndarray] = None, cov_type: str = 'HC3') -> causalis.data_contracts.multicausal_estimate.MultiCausalEstimate | causalis.data_contracts.multi_gate_estimate.MultiGateEstimate
 :canonical: causalis.scenarios.multi_unconfoundedness.model.MultiTreatmentIRM.estimate
 
 ```{autodoc2-docstring} causalis.scenarios.multi_unconfoundedness.model.MultiTreatmentIRM.estimate
+```
+
+````
+
+````{py:method} gate(groups: pandas.DataFrame | pandas.Series | numpy.ndarray, alpha: float = 0.05, cov_type: str = 'HC3', *, diagnostic_data: bool = True) -> causalis.data_contracts.multi_gate_estimate.MultiGateEstimate
+:canonical: causalis.scenarios.multi_unconfoundedness.model.MultiTreatmentIRM.gate
+
+```{autodoc2-docstring} causalis.scenarios.multi_unconfoundedness.model.MultiTreatmentIRM.gate
+```
+
+````
+
+````{py:method} gatet(groups: pandas.DataFrame | pandas.Series | numpy.ndarray, alpha: float = 0.05, cov_type: str = 'HC3', *, diagnostic_data: bool = True) -> causalis.data_contracts.multi_gate_estimate.MultiGateEstimate
+:canonical: causalis.scenarios.multi_unconfoundedness.model.MultiTreatmentIRM.gatet
+
+```{autodoc2-docstring} causalis.scenarios.multi_unconfoundedness.model.MultiTreatmentIRM.gatet
 ```
 
 ````

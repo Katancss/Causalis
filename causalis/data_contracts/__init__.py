@@ -12,6 +12,7 @@ from .panel_estimate import PanelEstimate
 from .causal_estimate import CausalEstimate
 from .iv_causal_estimate import IVCausalEstimate
 from .gate_estimate import GateEstimate
+from .multi_gate_estimate import MultiGateEstimate
 from .gate_contrast_estimate import GateContrastEstimate
 from .causal_diagnostic_data import (
     DiagnosticData,
@@ -53,6 +54,7 @@ __all__ = [
     "CausalEstimate",
     "IVCausalEstimate",
     "GateEstimate",
+    "MultiGateEstimate",
     "GateContrastEstimate",
     "DiagnosticData",
     "IVDiagnosticData",

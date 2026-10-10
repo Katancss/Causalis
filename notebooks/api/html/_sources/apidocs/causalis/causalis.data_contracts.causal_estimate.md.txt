@@ -223,6 +223,28 @@ Bases: {py:obj}`pydantic.BaseModel`
 
 ````
 
+````{py:attribute} adjusted_treatment_mean
+:canonical: causalis.data_contracts.causal_estimate.CausalEstimate.adjusted_treatment_mean
+:type: typing.Optional[float]
+:value: >
+   None
+
+```{autodoc2-docstring} causalis.data_contracts.causal_estimate.CausalEstimate.adjusted_treatment_mean
+```
+
+````
+
+````{py:attribute} adjusted_control_mean
+:canonical: causalis.data_contracts.causal_estimate.CausalEstimate.adjusted_control_mean
+:type: typing.Optional[float]
+:value: >
+   None
+
+```{autodoc2-docstring} causalis.data_contracts.causal_estimate.CausalEstimate.adjusted_control_mean
+```
+
+````
+
 ````{py:attribute} outcome
 :canonical: causalis.data_contracts.causal_estimate.CausalEstimate.outcome
 :type: str

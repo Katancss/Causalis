@@ -26,6 +26,7 @@ causalis.dgp.causaldata_instrumental
 :titlesonly:
 :maxdepth: 1
 
+causalis.dgp.rct_causal_data
 causalis.dgp.base
 ```
 
@@ -48,7 +49,7 @@ causalis.dgp.base
 ````{py:data} __all__
 :canonical: causalis.dgp.__all__
 :value: >
-   ['CausalDatasetGenerator', 'generate_rct', 'generate_classic_rct', 'classic_rct_gamma', 'obs_linear_...
+   ['generate_rct_causal_data', 'CausalDatasetGenerator', 'generate_rct', 'generate_classic_rct', 'clas...
 
 ```{autodoc2-docstring} causalis.dgp.__all__
 ```

@@ -35,7 +35,7 @@
 ```{autodoc2-docstring} causalis.scenarios.cuped.model.CUPEDModel.__init__
 ```
 
-````{py:method} fit(data: causalis.dgp.causaldata.CausalData, covariates: typing.Optional[typing.Sequence[str]] = None, run_checks: typing.Optional[bool] = None) -> causalis.scenarios.cuped.model.CUPEDModel
+````{py:method} fit(data: causalis.dgp.causaldata.CausalData | causalis.data_contracts.rct_causal_data.RctCausalData, covariates: typing.Optional[typing.Sequence[str]] = None, run_checks: typing.Optional[bool] = None, *, outcome: typing.Optional[str] = None, treatment: typing.Optional[str] = None) -> causalis.scenarios.cuped.model.CUPEDModel
 :canonical: causalis.scenarios.cuped.model.CUPEDModel.fit
 
 ```{autodoc2-docstring} causalis.scenarios.cuped.model.CUPEDModel.fit
@@ -43,7 +43,7 @@
 
 ````
 
-````{py:method} estimate(alpha: typing.Optional[float] = None, diagnostic_data: bool = True) -> causalis.data_contracts.causal_estimate.CausalEstimate
+````{py:method} estimate(alpha: typing.Optional[float] = None, diagnostic_data: bool = True, *, outcome: typing.Optional[str] = None, treatment: typing.Optional[str] = None) -> causalis.data_contracts.causal_estimate.CausalEstimate | causalis.data_contracts.rct_estimates.RctEstimates
 :canonical: causalis.scenarios.cuped.model.CUPEDModel.estimate
 
 ```{autodoc2-docstring} causalis.scenarios.cuped.model.CUPEDModel.estimate
@@ -51,7 +51,7 @@
 
 ````
 
-````{py:method} summary_dict(alpha: typing.Optional[float] = None) -> typing.Dict[str, typing.Any]
+````{py:method} summary_dict(alpha: typing.Optional[float] = None, *, outcome: typing.Optional[str] = None, treatment: typing.Optional[str] = None) -> typing.Dict[str, typing.Any]
 :canonical: causalis.scenarios.cuped.model.CUPEDModel.summary_dict
 
 ```{autodoc2-docstring} causalis.scenarios.cuped.model.CUPEDModel.summary_dict
@@ -59,7 +59,7 @@
 
 ````
 
-````{py:method} assumptions_table() -> typing.Optional[pandas.DataFrame]
+````{py:method} assumptions_table(*, outcome: typing.Optional[str] = None, treatment: typing.Optional[str] = None) -> typing.Optional[pandas.DataFrame]
 :canonical: causalis.scenarios.cuped.model.CUPEDModel.assumptions_table
 
 ```{autodoc2-docstring} causalis.scenarios.cuped.model.CUPEDModel.assumptions_table

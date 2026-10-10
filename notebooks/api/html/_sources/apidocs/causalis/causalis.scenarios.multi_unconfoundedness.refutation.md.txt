@@ -37,7 +37,7 @@ causalis.scenarios.multi_unconfoundedness.refutation.overlap
 ````{py:data} __all__
 :canonical: causalis.scenarios.multi_unconfoundedness.refutation.__all__
 :value: >
-   ['overlap', 'score', 'unconfoundedness', 'plot_m_overlap', 'overlap_plot', 'plot_residual_diagnostic...
+   ['overlap', 'score', 'unconfoundedness', 'love_plot', 'plot_m_overlap', 'overlap_plot', 'plot_residu...
 
 ```{autodoc2-docstring} causalis.scenarios.multi_unconfoundedness.refutation.__all__
 ```

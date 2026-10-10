@@ -53,7 +53,7 @@ def _validate_estimate_matches_data(data: MultiCausalData, estimate: MultiCausal
             f"({est_treatments!r} != {data_treatments!r})."
         )
 
-    missing_confounders = [name for name in data.confounders if name not in data.get_df().columns]
+    missing_confounders = [name for name in data.confounders if name not in data.df.columns]
     if missing_confounders:
         raise ValueError(
             "data.confounders are missing in data.get_df(): "
@@ -115,7 +115,7 @@ def _extract_balance_inputs(
     if x_raw is None:
         if not data.confounders:
             raise ValueError("MultiCausalData must include non-empty confounders.")
-        x_raw = data.get_df()[list(data.confounders)].to_numpy(dtype=float)
+        x_raw = data.df[list(data.confounders)].to_numpy(dtype=float, copy=False)
 
     score_raw = getattr(diag, "score", estimate.estimand)
     score = str(score_raw).upper()
@@ -191,78 +191,106 @@ def _smd_from_moments(
     return out
 
 
+# Bound the observation-by-feature scratch buffer independently of sample size.
+_MOMENT_WORK_BYTES = 8 * 1024 * 1024
+
+
+def _weighted_moments(
+    x: np.ndarray, weights: np.ndarray, total: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """Population moments with a reusable block buffer and centered arithmetic."""
+    n, p = x.shape
+    block_rows = min(n, max(1, _MOMENT_WORK_BYTES // (8 * max(p, 1))))
+    scratch = np.empty((block_rows, p), dtype=float)
+    mean = np.zeros(p, dtype=float)
+    # Shifting also avoids cancellation for large-offset covariates.
+    origin = x[0]
+    for start in range(0, n, block_rows):
+        stop = min(start + block_rows, n)
+        block = scratch[:stop - start]
+        np.subtract(x[start:stop], origin, out=block)
+        mean += np.einsum("i,ij->j", weights[start:stop], block)
+    mean /= total
+    mean += origin
+
+    variance = np.zeros(p, dtype=float)
+    for start in range(0, n, block_rows):
+        stop = min(start + block_rows, n)
+        block = scratch[:stop - start]
+        np.subtract(x[start:stop], mean, out=block)
+        np.square(block, out=block)
+        variance += np.einsum("i,ij->j", weights[start:stop], block)
+    variance /= total
+    return mean, variance
+
+
 def _balance_smd(inputs: _BalanceInputs, *, threshold: float) -> Dict[str, Any]:
     x = inputs.x
     d = inputs.d
-    m_hat = np.clip(inputs.m_hat, 1e-12, 1.0 - 1e-12)
+    m_hat = inputs.m_hat
 
     _, p = x.shape
     k = d.shape[1]
 
     comparison_labels: List[str] = []
-    smd_weighted_columns: List[np.ndarray] = []
-    smd_unweighted_columns: List[np.ndarray] = []
+    smd_weighted_values = np.empty((p, k - 1), dtype=float)
+    smd_unweighted_values = np.empty((p, k - 1), dtype=float)
 
     by_comparison_rows: List[Dict[str, Any]] = []
 
     baseline_name = str(inputs.treatment_names[0])
+    baseline_propensity = np.clip(m_hat[:, 0], 1e-12, 1.0 - 1e-12)
+    baseline_mask = d[:, 0].astype(bool)
+    baseline_count = int(np.count_nonzero(baseline_mask))
+    baseline_unweighted = (
+        _weighted_moments(x, baseline_mask, baseline_count)
+        if baseline_count else None
+    )
+    baseline_weighted = None
+
+    def moments(weights: np.ndarray, comparison: str) -> tuple[np.ndarray, np.ndarray]:
+        if inputs.normalize:
+            mean_weight = float(np.mean(weights))
+            weights = weights / (mean_weight if mean_weight != 0.0 else 1.0)
+        total = float(np.sum(weights))
+        if total <= 0.0:
+            raise RuntimeError(f"Degenerate weights in comparison {comparison}: zero total mass.")
+        return _weighted_moments(x, weights, total)
 
     for tr_idx in range(1, k):
         tr_name = str(inputs.treatment_names[tr_idx])
         comp = _comparison_label(baseline_name, tr_name)
         comparison_labels.append(comp)
 
+        propensity = np.clip(m_hat[:, tr_idx], 1e-12, 1.0 - 1e-12)
         if inputs.score == "ATE":
-            w_baseline = d[:, 0] / m_hat[:, 0]
-            w_treated = d[:, tr_idx] / m_hat[:, tr_idx]
+            if baseline_weighted is None:
+                baseline_weighted = moments(d[:, 0] / baseline_propensity, comp)
+            mu_baseline, var_baseline = baseline_weighted
+            mu_treated, var_treated = moments(d[:, tr_idx] / propensity, comp)
         else:
-            w_baseline = d[:, 0] * (m_hat[:, tr_idx] / m_hat[:, 0])
-            w_treated = d[:, tr_idx]
-
-        if inputs.normalize:
-            mean_baseline = float(np.mean(w_baseline))
-            mean_treated = float(np.mean(w_treated))
-            w_baseline = w_baseline / (mean_baseline if mean_baseline != 0.0 else 1.0)
-            w_treated = w_treated / (mean_treated if mean_treated != 0.0 else 1.0)
-
-        sw_baseline = float(np.sum(w_baseline))
-        sw_treated = float(np.sum(w_treated))
-        if sw_baseline <= 0.0 or sw_treated <= 0.0:
-            raise RuntimeError(f"Degenerate weights in comparison {comp}: zero total mass.")
-
-        mu_baseline = (w_baseline[:, None] * x).sum(axis=0) / sw_baseline
-        mu_treated = (w_treated[:, None] * x).sum(axis=0) / sw_treated
-
-        var_baseline = (w_baseline[:, None] * (x - mu_baseline) ** 2).sum(axis=0) / sw_baseline
-        var_treated = (w_treated[:, None] * (x - mu_treated) ** 2).sum(axis=0) / sw_treated
+            mu_baseline, var_baseline = moments(
+                d[:, 0] * (propensity / baseline_propensity), comp
+            )
+            mu_treated, var_treated = moments(d[:, tr_idx], comp)
 
         smd_weighted = _smd_from_moments(
-            mu_a=mu_treated,
-            var_a=var_treated,
-            mu_b=mu_baseline,
-            var_b=var_baseline,
+            mu_a=mu_treated, var_a=var_treated,
+            mu_b=mu_baseline, var_b=var_baseline,
         )
-        smd_weighted_columns.append(smd_weighted)
+        smd_weighted_values[:, tr_idx - 1] = smd_weighted
 
-        mask_baseline = d[:, 0].astype(bool)
         mask_treated = d[:, tr_idx].astype(bool)
-        if not np.any(mask_baseline) or not np.any(mask_treated):
-            smd_unweighted = np.full(p, np.nan, dtype=float)
+        treated_count = int(np.count_nonzero(mask_treated))
+        if baseline_unweighted is None or not treated_count:
+            smd_unweighted_values[:, tr_idx - 1] = np.nan
         else:
-            x_baseline = x[mask_baseline]
-            x_treated = x[mask_treated]
-            mu_baseline_u = x_baseline.mean(axis=0)
-            mu_treated_u = x_treated.mean(axis=0)
-            var_baseline_u = x_baseline.var(axis=0, ddof=0)
-            var_treated_u = x_treated.var(axis=0, ddof=0)
-            smd_unweighted = _smd_from_moments(
-                mu_a=mu_treated_u,
-                var_a=var_treated_u,
-                mu_b=mu_baseline_u,
-                var_b=var_baseline_u,
+            mu_baseline_u, var_baseline_u = baseline_unweighted
+            mu_treated_u, var_treated_u = _weighted_moments(x, mask_treated, treated_count)
+            smd_unweighted_values[:, tr_idx - 1] = _smd_from_moments(
+                mu_a=mu_treated_u, var_a=var_treated_u,
+                mu_b=mu_baseline_u, var_b=var_baseline_u,
             )
-
-        smd_unweighted_columns.append(smd_unweighted)
 
         finite = np.isfinite(smd_weighted)
         if np.any(finite):
@@ -293,13 +321,13 @@ def _balance_smd(inputs: _BalanceInputs, *, threshold: float) -> Dict[str, Any]:
         )
 
     smd_weighted_df = pd.DataFrame(
-        np.vstack(smd_weighted_columns).T,
+        smd_weighted_values,
         index=inputs.feature_names,
         columns=comparison_labels,
         dtype=float,
     )
     smd_unweighted_df = pd.DataFrame(
-        np.vstack(smd_unweighted_columns).T,
+        smd_unweighted_values,
         index=inputs.feature_names,
         columns=comparison_labels,
         dtype=float,
