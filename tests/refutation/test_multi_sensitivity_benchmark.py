@@ -136,12 +136,15 @@ def test_multi_sensitivity_benchmark_basic_with_estimate_input():
     assert np.all(np.isfinite(res["delta"].to_numpy(dtype=float)))
     assert np.any(np.abs(res["delta"].to_numpy(dtype=float)) > 0.0)
 
-    # Gain-statistics calibration: strengths in [0, 1), rho in [-1, 1], deprecated copies.
+    # Gain-statistics calibration: strengths in [0, 1], with valid rows below 1.
     cf_y = res["cf_y"].to_numpy(dtype=float)
     cf_d = res["cf_d"].to_numpy(dtype=float)
     rho = res["rho"].to_numpy(dtype=float)
-    assert np.all((cf_y >= 0.0) & (cf_y < 1.0))
-    assert np.all((cf_d >= 0.0) & (cf_d < 1.0))
+    assert np.all((cf_y >= 0.0) & (cf_y <= 1.0))
+    assert np.all((cf_d >= 0.0) & (cf_d <= 1.0))
+    valid = res["calibration_valid"].to_numpy(dtype=bool)
+    assert np.all(cf_y[valid] < 1.0)
+    assert np.all(cf_d[valid] < 1.0)
     assert np.all(np.abs(rho) <= 1.0)
     np.testing.assert_allclose(res["r2_y"].to_numpy(dtype=float), cf_y)
     np.testing.assert_allclose(res["r2_d"].to_numpy(dtype=float), cf_d)
@@ -155,13 +158,13 @@ def test_multi_sensitivity_benchmark_basic_with_estimate_input():
     sigma2_short = res["sigma2_short"].to_numpy(dtype=float)
     nu2_short = res["nu2_short"].to_numpy(dtype=float)
     np.testing.assert_allclose(
-        res["cf_y_raw"].to_numpy(dtype=float), (sigma2_short - sigma2_long) / sigma2_short
+        res["cf_y_raw"].to_numpy(dtype=float), (sigma2_short - sigma2_long) / sigma2_long
     )
     np.testing.assert_allclose(
-        res["cf_d_raw"].to_numpy(dtype=float), (nu2_long - nu2_short) / nu2_long
+        res["cf_d_raw"].to_numpy(dtype=float), (nu2_long - nu2_short) / nu2_short
     )
-    np.testing.assert_allclose(cf_y, np.maximum(res["cf_y_raw"].to_numpy(dtype=float), 0.0))
-    np.testing.assert_allclose(cf_d, np.maximum(res["cf_d_raw"].to_numpy(dtype=float), 0.0))
+    np.testing.assert_allclose(cf_y, np.clip(res["cf_y_raw"].to_numpy(dtype=float), 0.0, 1.0))
+    np.testing.assert_allclose(cf_d, np.clip(res["cf_d_raw"].to_numpy(dtype=float), 0.0, 1.0))
 
 
 def test_multi_sensitivity_benchmark_input_validation():

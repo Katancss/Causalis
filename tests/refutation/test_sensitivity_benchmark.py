@@ -103,7 +103,13 @@ def test_sensitivity_benchmark_single_confounder_returns_long_row():
     assert np.isfinite(res["rho"].to_numpy(dtype=float)).all()
     assert pd.notna(res["theta_short"]).all()
     assert pd.notna(res["delta"]).all()
-    assert bool(res.loc[0, "calibration_valid"]) is True
+    # This strong benchmark reaches the relative-gain upper boundary. Keep
+    # the refit and audit values, but do not treat it as a valid finite scenario.
+    assert max(float(res.loc[0, "cf_y"]), float(res.loc[0, "cf_d"])) == 1.0
+    assert bool(res.loc[0, "calibration_valid"]) is False
+    assert bool(res.loc[0, "strengths_valid"]) is False
+    assert bool(res.loc[0, "boundary_calibration"]) is True
+    assert "must be < 1" in res.loc[0, "calibration_issue"]
     expected_rho = (
         float(res.loc[0, "theta_short"] - res.loc[0, "theta_long"])
         / np.sqrt(
@@ -373,14 +379,14 @@ def test_gain_calibration_uses_long_short_elements_and_preserves_delta_sign():
     )
 
     # gap_y = 1, gap_d = 1
-    assert calibrated["cf_y_raw"] == pytest.approx(1.0 / 5.0)
-    assert calibrated["cf_y"] == pytest.approx(1.0 / 5.0)
-    assert calibrated["cf_d_raw"] == pytest.approx(1.0 / 9.0)
-    assert calibrated["cf_d"] == pytest.approx(1.0 / 9.0)
+    assert calibrated["cf_y_raw"] == pytest.approx(1.0 / 4.0)
+    assert calibrated["cf_y"] == pytest.approx(1.0 / 4.0)
+    assert calibrated["cf_d_raw"] == pytest.approx(1.0 / 8.0)
+    assert calibrated["cf_d"] == pytest.approx(1.0 / 8.0)
     # deprecated copies
     assert calibrated["r2_y"] == pytest.approx(calibrated["cf_y"])
     assert calibrated["r2_d"] == pytest.approx(calibrated["cf_d"])
-    # odds-form gains (DoubleML gain_statistics)
+    # Relative gains calibrate an additional confounder for the full model.
     assert calibrated["gain_y"] == pytest.approx(1.0 / 4.0)
     assert calibrated["gain_d"] == pytest.approx(1.0 / 8.0)
     assert calibrated["rho_raw"] == pytest.approx(0.3)
@@ -394,19 +400,19 @@ def test_gain_calibration_clips_rho_but_remains_valid():
     calibrated = _calibrate_benchmark_gain_statistics(
         theta_long=0.0,
         theta_short=10.0,
-        sigma2_long=1.0,
-        sigma2_short=3.0,
-        nu2_long=2.0,
-        nu2_short=1.5,
+        sigma2_long=4.0,
+        sigma2_short=5.0,
+        nu2_long=9.0,
+        nu2_short=8.0,
     )
 
-    # gap_y = 2, gap_d = 0.5: strengths are in (0, 1) and are not clipped
-    assert calibrated["cf_y_raw"] == pytest.approx(2.0 / 3.0)
-    assert calibrated["cf_y"] == pytest.approx(2.0 / 3.0)
-    assert calibrated["cf_d_raw"] == pytest.approx(0.25)
-    assert calibrated["cf_d"] == pytest.approx(0.25)
-    assert calibrated["gain_y"] == pytest.approx(2.0)
-    assert calibrated["gain_d"] == pytest.approx(0.5 / 1.5)
+    # gap_y = gap_d = 1: strengths stay in (0, 1), while rho is clipped.
+    assert calibrated["cf_y_raw"] == pytest.approx(0.25)
+    assert calibrated["cf_y"] == pytest.approx(0.25)
+    assert calibrated["cf_d_raw"] == pytest.approx(0.125)
+    assert calibrated["cf_d"] == pytest.approx(0.125)
+    assert calibrated["gain_y"] == pytest.approx(0.25)
+    assert calibrated["gain_d"] == pytest.approx(0.125)
     assert calibrated["rho_raw"] == pytest.approx(10.0)
     assert calibrated["rho"] == 1.0
     assert calibrated["rho_clipped"] is True
@@ -422,17 +428,17 @@ def test_gain_calibration_clips_rho_but_remains_valid():
         (
             {"sigma2_long": 1.0, "sigma2_short": 1.0, "nu2_long": 2.0, "nu2_short": 1.5},
             0.0,
-            0.25,
+            1.0 / 3.0,
             1.0,
         ),
         (
-            {"sigma2_long": 1.0, "sigma2_short": 2.0, "nu2_long": 2.0, "nu2_short": 2.0},
+            {"sigma2_long": 1.0, "sigma2_short": 1.5, "nu2_long": 2.0, "nu2_short": 2.0},
             0.5,
             0.0,
             1.0,
         ),
         (
-            {"sigma2_long": 1.0, "sigma2_short": 2.0, "nu2_long": 2.0, "nu2_short": 3.0},
+            {"sigma2_long": 1.0, "sigma2_short": 1.5, "nu2_long": 2.0, "nu2_short": 3.0},
             0.5,
             0.0,
             1.0,
@@ -471,8 +477,8 @@ def test_gain_calibration_preserves_negative_raw_gain_before_clipping():
         nu2_short=3.0,
     )
 
-    # gap_d = -1 -> cf_d_raw = -1 / nu2_long = -0.5
-    assert calibrated["cf_d_raw"] == pytest.approx(-0.5)
+    # gap_d = -1 -> cf_d_raw = -1 / nu2_short = -1/3
+    assert calibrated["cf_d_raw"] == pytest.approx(-1.0 / 3.0)
     assert calibrated["cf_d"] == 0.0
     assert calibrated["cf_d_clipped"] is True
     assert calibrated["gain_d"] == 0.0
@@ -482,24 +488,26 @@ def test_gain_calibration_preserves_negative_raw_gain_before_clipping():
     assert "clipped to 0" in calibrated["calibration_warning"]
 
 
-def test_gain_calibration_large_gap_stays_below_one_and_valid():
+@pytest.mark.parametrize(
+    ("sigma2_short", "nu2_long"),
+    [(1.5, 3.0), (3.0, 1.5), (2.0, 1.5), (1.5, 2.0)],
+)
+def test_gain_calibration_upper_boundary_fails_closed(sigma2_short, nu2_long):
     calibrated = _calibrate_benchmark_gain_statistics(
         theta_long=1.0,
         theta_short=1.1,
         sigma2_long=1.0,
-        sigma2_short=2.0,
-        nu2_long=3.0,
+        sigma2_short=sigma2_short,
+        nu2_long=nu2_long,
         nu2_short=1.0,
     )
 
-    # gap_y = 1, gap_d = 2: cf_d = 2/3 (< 1); the odds-form gain 2.0 is not used as a strength
-    assert calibrated["cf_d_raw"] == pytest.approx(2.0 / 3.0)
-    assert calibrated["cf_d"] == pytest.approx(2.0 / 3.0)
-    assert calibrated["gain_d"] == pytest.approx(2.0)
-    assert calibrated["cf_d_clipped"] is False
-    assert calibrated["rho_raw"] == pytest.approx(0.1 / np.sqrt(2.0))
-    assert calibrated["strengths_valid"] is True
-    assert calibrated["calibration_valid"] is True
+    assert max(calibrated["cf_y"], calibrated["cf_d"]) == 1.0
+    assert max(calibrated["gain_y"], calibrated["gain_d"]) >= 1.0
+    assert calibrated["boundary_calibration"] is True
+    assert calibrated["strengths_valid"] is False
+    assert calibrated["calibration_valid"] is False
+    assert "must be < 1" in calibrated["calibration_issue"]
 
 
 def test_gain_calibration_still_fails_for_unavailable_elements():

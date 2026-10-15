@@ -485,7 +485,7 @@ def combine_nu2(
     rho_arr = np.clip(rho_arr, -1.0, 1.0)
     _bias_factor(cf_y, cf_d_arr)
 
-    # Treatment gain on the odds scale: cf_d / (1 - cf_d) = (nu2_long - nu2_short) / nu2_short.
+    # The treatment sensitivity parameter enters on the odds scale.
     k_d = cf_d_arr / (1.0 - cf_d_arr)
     a = np.sqrt(2.0 * np.maximum(m_alpha_arr, 0.0))
     b = rr_arr if use_signed_rr else np.abs(rr_arr)
@@ -943,8 +943,11 @@ def sensitivity_benchmark(
 
     This function intentionally performs the short-model refit because
     ``theta_short`` and ``delta`` are defined by that re-estimation step.
-    Strengths are gain statistics per contrast: ``cf_y = (sigma2_short - sigma2_long) / sigma2_short``,
-    ``cf_d = (nu2_long - nu2_short) / nu2_long`` and
+    Relative benchmark gains per contrast are
+    ``gain_y = (sigma2_short - sigma2_long) / sigma2_long`` and
+    ``gain_d = (nu2_long - nu2_short) / nu2_short``, as in DoubleML. They are
+    clipped to [0, 1] as ``cf_y``/``cf_d``; values at 1 are uncalibratable for
+    the sensitivity API. The adversity parameter is
     ``rho = (theta_short - theta_long) / sqrt(gap_y * gap_d)``.
 
     Parameters

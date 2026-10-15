@@ -306,6 +306,36 @@ def test_protocol_fails_closed_for_uncalibratable_primary(monkeypatch):
     assert any("not calibratable" in warning for warning in report["warnings"])
 
 
+@pytest.mark.parametrize(
+    ("sigma2_short", "nu2_long"),
+    [(3.0, 1.5), (1.5, 3.0)],
+)
+def test_protocol_rejects_upper_boundary_relative_benchmark(
+    monkeypatch, sigma2_short, nu2_long
+):
+    calibrated = sensitivity_module._calibrate_benchmark_gain_statistics(
+        theta_long=2.0,
+        theta_short=2.3,
+        sigma2_long=1.0,
+        sigma2_short=sigma2_short,
+        nu2_long=nu2_long,
+        nu2_short=1.0,
+    )
+    _install_benchmarks(monkeypatch, {("x1",): calibrated})
+    report = run_sensitivity_protocol(
+        _DummyIRM(theta=2.0, se=0.01),
+        object(),  # type: ignore[arg-type]
+        benchmark_groups={"upper_boundary": ["x1"]},
+        decision_threshold=0.0,
+        direction="positive",
+    )
+    assert report["status"] == "FAIL"
+    for scenario in ("primary", "stress", "adversarial"):
+        assert not bool(report[scenario].loc[0, "scenario_valid"])
+        assert not bool(report[scenario].loc[0, "passed"])
+    assert "must be < 1" in report["primary"].loc[0, "scenario_issue"]
+
+
 def test_protocol_keeps_adversarial_when_only_rho_is_invalid(monkeypatch):
     _install_benchmarks(
         monkeypatch,

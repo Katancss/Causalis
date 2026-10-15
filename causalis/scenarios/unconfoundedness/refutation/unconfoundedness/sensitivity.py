@@ -1075,22 +1075,26 @@ def _calibrate_benchmark_gain_statistics(
     nu2_short: float,
     element_issue: str | None = None,
 ) -> dict[str, Any]:
-    """Calibrate confounder strengths from long/short gain statistics.
+    """Calibrate relative benchmark gains for sensitivity of the full model.
 
     Following Chernozhukov et al. (2022), with ``gap_y = sigma2_short - sigma2_long``
     and ``gap_d = nu2_long - nu2_short``:
 
-    - ``cf_y = gap_y / sigma2_short`` (= R^2_{Y-g_s ~ g_l-g_s}),
-    - ``cf_d = gap_d / nu2_long`` (= 1 - R^2_{alpha_l ~ alpha_s}),
+    - ``gain_y = gap_y / sigma2_long``,
+    - ``gain_d = gap_d / nu2_short``,
     - ``rho = (theta_short - theta_long) / sqrt(gap_y * gap_d)`` clipped to [-1, 1].
 
-    These are exactly the inputs of the bound
-    ``|rho| * sqrt(cf_y * cf_d / (1 - cf_d)) * sqrt(sigma2 * nu2)``.
-    The odds-form gains ``gain_y = gap_y / sigma2_long`` and
-    ``gain_d = gap_d / nu2_short`` are also reported. DoubleML's
-    ``gain_statistics`` reports these relative gains as ``cf_y``/``cf_d``, so
-    its benchmark values differ from the bounded strengths returned here.
-    Negative gaps are clipped to zero.
+    These are the relative-strength gains in Appendix F, equations (22)-(23),
+    of Chernozhukov et al. They calibrate a hypothetical omitted confounder
+    relative to the model with all observed covariates, as in DoubleML's
+    ``gain_statistics``. Normalizing by ``sigma2_short`` and ``nu2_long`` would
+    instead describe the effect of adding the observed benchmark to the short
+    model, which is a different sensitivity scenario.
+
+    ``cf_y`` and ``cf_d`` are the raw relative gains clipped to [0, 1], matching
+    DoubleML. A value of 1 is retained for auditing but marked uncalibratable
+    because this sensitivity API requires both strengths to be below 1.
+    ``gain_y``/``gain_d`` retain nonnegative gains before upper clipping.
     If the denominator for ``rho`` is not positive, ``rho`` falls back to the
     sign of the long/short effect shift.
     ``cf_y_raw``/``cf_d_raw`` hold the unclipped values; ``r2_y``/``r2_d`` are
@@ -1146,8 +1150,8 @@ def _calibrate_benchmark_gain_statistics(
     gap_d = float(nu2_long - nu2_short)
 
     if not issues:
-        result["cf_y_raw"] = float(gap_y / sigma2_short)
-        result["cf_d_raw"] = float(gap_d / nu2_long)
+        result["cf_y_raw"] = float(gap_y / sigma2_long)
+        result["cf_d_raw"] = float(gap_d / nu2_short)
         result["gain_y"] = float(max(gap_y, 0.0) / sigma2_long)
         result["gain_d"] = float(max(gap_d, 0.0) / nu2_short)
         if not np.isfinite(result["cf_y_raw"]):
@@ -1156,9 +1160,8 @@ def _calibrate_benchmark_gain_statistics(
             issues.append("cf_d_raw must be finite")
 
     if not issues:
-        # Positive gaps give values in (0, 1) by construction; only negative gaps are clipped.
-        cf_y = float(max(result["cf_y_raw"], 0.0))
-        cf_d = float(max(result["cf_d_raw"], 0.0))
+        cf_y = float(np.clip(result["cf_y_raw"], 0.0, 1.0))
+        cf_d = float(np.clip(result["cf_d_raw"], 0.0, 1.0))
         cf_y_clipped = bool(cf_y != result["cf_y_raw"])
         cf_d_clipped = bool(cf_d != result["cf_d_raw"])
         result.update(
@@ -1181,7 +1184,7 @@ def _calibrate_benchmark_gain_statistics(
             )
 
         if cf_y >= 1.0 or cf_d >= 1.0:
-            issues.append("calibrated cf_y/cf_d must be < 1")
+            issues.append("calibrated cf_y/cf_d must be < 1; benchmark gains reach the upper boundary")
         else:
             result["strengths_valid"] = True
 
@@ -1218,6 +1221,8 @@ def _calibrate_benchmark_gain_statistics(
         result["cf_y_clipped"]
         or result["cf_d_clipped"]
         or result["rho_fallback"]
+        or result["cf_y"] == 1.0
+        or result["cf_d"] == 1.0
     )
     result["calibration_valid"] = bool(
         not issues
@@ -1276,11 +1281,12 @@ def _sensitivity_benchmark_refits(
     Notes
     -----
     The gain statistics follow the long/short construction of Chernozhukov et
-    al. (2022): ``cf_y = (sigma2_short - sigma2_long) / sigma2_short`` and
-    ``cf_d = (nu2_long - nu2_short) / nu2_long``, which can be passed directly to
-    :func:`sensitivity_analysis`. Negative gaps are clipped to zero. The odds-form
-    gains used by DoubleML's ``gain_statistics`` are reported as ``gain_y`` and
-    ``gain_d``. ``rho`` is estimated from the effect shift divided by the
+    al. (2022), Appendix F: ``gain_y = (sigma2_short - sigma2_long) / sigma2_long``
+    and ``gain_d = (nu2_long - nu2_short) / nu2_short``. These relative gains
+    calibrate an additional omitted confounder for the full model, matching
+    DoubleML's ``gain_statistics``. ``cf_y``/``cf_d`` are clipped to [0, 1];
+    upper-boundary values are reported but marked uncalibratable for this API.
+    ``rho`` is estimated from the effect shift divided by the
     geometric mean of positive outcome- and Riesz-representer gains; if either
     gain is not positive, DoubleML's fallback uses the sign of the effect shift
     (magnitude one unless the shift is zero).
